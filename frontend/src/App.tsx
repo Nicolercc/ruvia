@@ -280,8 +280,9 @@ export default function App() {
           <button type="button" className="secondary" onClick={loadDemoCandidates}>
             Load demo candidates
           </button>
-          <FileUploadControl id="resumes" label="Upload PDF or DOCX resumes" onChange={onFilesSelected} />
-          <SelectedFiles demo={demo} demoCandidateIds={demoCandidateIds} files={files} />
+          <FileUploadControl id="resumes" label="Upload PDF or DOCX resumes" onChange={onFilesSelected}>
+            <SelectedFiles demo={demo} demoCandidateIds={demoCandidateIds} files={files} />
+          </FileUploadControl>
           <button type="button" className={`primary analyze-button ${isStale ? "analyze-stale" : ""}`} onClick={runAnalysis}>
             {loading ? <Loader2 className="spin" size={18} aria-hidden="true" /> : <Users size={18} aria-hidden="true" />}
             {isStale ? "Analyze current inputs" : "Analyze candidates"}
