@@ -360,3 +360,73 @@ describe("analysis lifecycle integrity", () => {
     expect(within(scoreContext).getByText("of 100")).toBeInTheDocument();
   });
 });
+
+describe("input session vs recruiter status persistence", () => {
+  it("does not restore demo inputs or analysis from sessionStorage on mount", async () => {
+    window.sessionStorage.setItem(
+      "ruvia:last-demo-run:v1",
+      JSON.stringify({
+        demoJobId: "demo-role-revenue-ops-analyst",
+        demoCandidateIds: [
+          "demo-candidate-maya-chen",
+          "demo-candidate-owen-rivera",
+          "demo-candidate-sam-patel"
+        ]
+      })
+    );
+    await renderApp();
+
+    expect(screen.getByLabelText(/Role details/i)).toHaveValue("");
+    expect(screen.getByText(/No candidates selected/i)).toBeInTheDocument();
+    expect(screen.getByText(/Load a job and up to three candidates/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Maya Chen" })).not.toBeInTheDocument();
+    expect(analyzeCandidates).not.toHaveBeenCalled();
+  });
+
+  it("keeps saved recruiter statuses after refresh while leaving the input session empty", async () => {
+    window.localStorage.setItem(
+      "ruvia:candidate-statuses:v1",
+      JSON.stringify({ "demo-candidate-maya-chen": "Interview" })
+    );
+    const user = userEvent.setup();
+    vi.mocked(analyzeCandidates).mockResolvedValueOnce(analysisResponse(allDemoCandidates(), "demo_fallback"));
+    await renderApp();
+
+    expect(screen.getByLabelText(/Role details/i)).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: /Load demo job/i }));
+    await user.click(screen.getByRole("button", { name: /Load demo candidates/i }));
+    await user.click(screen.getByRole("button", { name: /Analyze candidates/i }));
+    await screen.findByRole("heading", { name: "Maya Chen" });
+
+    expect(screen.getByLabelText(/Recruiter status/i)).toHaveValue("Interview");
+  });
+
+  it("reset workspace clears the input session without clearing saved recruiter statuses", async () => {
+    const user = userEvent.setup();
+    vi.mocked(analyzeCandidates).mockResolvedValueOnce(analysisResponse(allDemoCandidates(), "demo_fallback"));
+    await renderApp();
+
+    await user.click(screen.getByRole("button", { name: /Load demo job/i }));
+    await user.click(screen.getByRole("button", { name: /Load demo candidates/i }));
+    await user.click(screen.getByRole("button", { name: /Analyze candidates/i }));
+    await screen.findByRole("heading", { name: "Maya Chen" });
+
+    await user.selectOptions(screen.getByLabelText(/Recruiter status/i), "Interview");
+    expect(window.localStorage.getItem("ruvia:candidate-statuses:v1")).toContain("Interview");
+
+    await user.click(screen.getByRole("button", { name: /Reset workspace/i }));
+
+    expect(screen.getByLabelText(/Role details/i)).toHaveValue("");
+    expect(screen.getByText(/No candidates selected/i)).toBeInTheDocument();
+    expect(screen.getByText(/Load a job and up to three candidates/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Maya Chen" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("ruvia:candidate-statuses:v1")).toContain("Interview");
+
+    vi.mocked(analyzeCandidates).mockResolvedValueOnce(analysisResponse(allDemoCandidates(), "demo_fallback"));
+    await user.click(screen.getByRole("button", { name: /Load demo job/i }));
+    await user.click(screen.getByRole("button", { name: /Load demo candidates/i }));
+    await user.click(screen.getByRole("button", { name: /Analyze candidates/i }));
+    await screen.findByRole("heading", { name: "Maya Chen" });
+    expect(screen.getByLabelText(/Recruiter status/i)).toHaveValue("Interview");
+  });
+});

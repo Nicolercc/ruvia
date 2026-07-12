@@ -12,6 +12,7 @@ type AnalysisContextBarProps = {
   onViewRubric: () => void;
   onChangeInputs: () => void;
   onAnalyzeAgain: () => void;
+  onResetWorkspace: () => void;
   rubricTriggerRef: React.RefObject<HTMLButtonElement>;
 };
 
@@ -24,6 +25,7 @@ export function AnalysisContextBar({
   onViewRubric,
   onChangeInputs,
   onAnalyzeAgain,
+  onResetWorkspace,
   rubricTriggerRef
 }: AnalysisContextBarProps) {
   const isStale = lifecycle === "stale";
@@ -57,6 +59,9 @@ export function AnalysisContextBar({
         </button>
         <button type="button" className="secondary" onClick={onChangeInputs}>
           Change inputs
+        </button>
+        <button type="button" className="secondary" onClick={onResetWorkspace}>
+          Reset workspace
         </button>
         <button type="button" className={isStale ? "primary" : "secondary"} onClick={onAnalyzeAgain}>
           {loading ? <Loader2 className="spin" size={16} aria-hidden="true" /> : null}

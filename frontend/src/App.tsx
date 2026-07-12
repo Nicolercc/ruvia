@@ -10,8 +10,6 @@ import { FileUploadControl } from "./components/FileUploadControl";
 import { RubricDialog } from "./components/RubricDialog";
 import "./styles.css";
 
-const lastDemoRunKey = "ruvia:last-demo-run:v1";
-
 export type AnalysisLifecycle = "idle" | "ready" | "analyzing" | "success_live" | "success_demo" | "stale" | "error";
 
 export function computeInputFingerprint(jobDescription: string, demoCandidateIds: string[], files: File[]): string {
@@ -50,6 +48,7 @@ export default function App() {
   const [analysisFingerprint, setAnalysisFingerprint] = React.useState<string | null>(null);
   const [analyzedAt, setAnalyzedAt] = React.useState<Date | null>(null);
   const [rubricOpen, setRubricOpen] = React.useState(false);
+  const [fileInputKey, setFileInputKey] = React.useState(0);
 
   const setupRef = React.useRef<HTMLElement>(null);
   const rubricTriggerRef = React.useRef<HTMLButtonElement>(null);
@@ -74,57 +73,8 @@ export default function App() {
   }, [currentFingerprint, analysisFingerprint]);
 
   React.useEffect(() => {
-    window.sessionStorage.removeItem("ruvia:last-analysis:v1");
     fetchDemo()
-      .then((data) => {
-        setDemo(data);
-        const saved = window.sessionStorage.getItem(lastDemoRunKey);
-        if (!saved) return;
-        let parsed: { demoJobId: string; demoCandidateIds: string[] };
-        try {
-          parsed = JSON.parse(saved) as { demoJobId: string; demoCandidateIds: string[] };
-        } catch {
-          window.sessionStorage.removeItem(lastDemoRunKey);
-          return;
-        }
-        if (parsed.demoJobId !== data.demo_job_id || !parsed.demoCandidateIds.length) return;
-        setJobDescription(data.job_description);
-        setDemoJobId(parsed.demoJobId);
-        setDemoCandidateIds(parsed.demoCandidateIds);
-        const fingerprint = computeInputFingerprint(data.job_description, parsed.demoCandidateIds, []);
-        const token = ++runTokenRef.current;
-        setLoading(true);
-        setLifecycle("analyzing");
-        analyzeCandidates({
-          jobDescription: data.job_description,
-          demoJobId: parsed.demoJobId,
-          demoCandidateIds: parsed.demoCandidateIds,
-          files: []
-        })
-          .then((result) => {
-            const isLatest = token === runTokenRef.current;
-            const inputsUnchanged = fingerprint === currentFingerprintRef.current;
-            if (!isLatest || !inputsUnchanged) return;
-            if (!responseMatchesRequestedDemoCandidates(result, parsed.demoCandidateIds)) {
-              setError("Analysis response candidate IDs did not match the request.");
-              setLifecycle("error");
-              return;
-            }
-            setAnalysis(result);
-            setSelectedId(result.candidates[0]?.candidate_id ?? null);
-            setAnalysisFingerprint(fingerprint);
-            setAnalyzedAt(new Date());
-            setLifecycle(result.mode === "demo_fallback" ? "success_demo" : "success_live");
-          })
-          .catch((err: Error) => {
-            if (token !== runTokenRef.current) return;
-            setError(err.message);
-            setLifecycle("error");
-          })
-          .finally(() => {
-            if (token === runTokenRef.current) setLoading(false);
-          });
-      })
+      .then((data) => setDemo(data))
       .catch((err: Error) => setError(err.message));
   }, []);
 
@@ -184,11 +134,6 @@ export default function App() {
       setAnalysisFingerprint(fingerprint);
       setAnalyzedAt(new Date());
       setLifecycle(result.mode === "demo_fallback" ? "success_demo" : "success_live");
-      if (demoJobId && demoCandidateIds.length > 0) {
-        window.sessionStorage.setItem(lastDemoRunKey, JSON.stringify({ demoJobId, demoCandidateIds }));
-      } else {
-        window.sessionStorage.removeItem(lastDemoRunKey);
-      }
     } catch (err) {
       if (token !== runTokenRef.current) return;
       setError(err instanceof Error ? err.message : "Analysis failed");
@@ -223,9 +168,33 @@ export default function App() {
   }
 
   function scrollToSetup() {
-    setupRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setupRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     const firstControl = setupRef.current?.querySelector<HTMLElement>("button, textarea, input");
     firstControl?.focus();
+  }
+
+  function resetWorkspace() {
+    ++runTokenRef.current;
+    setJobDescription("");
+    setDemoJobId(null);
+    setDemoCandidateIds([]);
+    setFiles([]);
+    setAnalysis(null);
+    setSelectedId(null);
+    setDraft(null);
+    setSubject("");
+    setBody("");
+    setError(null);
+    setRecruiterName("");
+    setInterviewDetails("");
+    setLifecycle("idle");
+    setAnalysisFingerprint(null);
+    setAnalyzedAt(null);
+    setRubricOpen(false);
+    setLoading(false);
+    setDraftLoading(false);
+    setFileInputKey((current) => current + 1);
+    scrollToSetup();
   }
 
   if (!workspaceOpen) {
@@ -280,7 +249,7 @@ export default function App() {
           <button type="button" className="secondary" onClick={loadDemoCandidates}>
             Load demo candidates
           </button>
-          <FileUploadControl id="resumes" label="Upload PDF or DOCX resumes" onChange={onFilesSelected}>
+          <FileUploadControl key={fileInputKey} id="resumes" label="Upload PDF or DOCX resumes" onChange={onFilesSelected}>
             <SelectedFiles demo={demo} demoCandidateIds={demoCandidateIds} files={files} />
           </FileUploadControl>
           <button type="button" className={`primary analyze-button ${isStale ? "analyze-stale" : ""}`} onClick={runAnalysis}>
@@ -307,6 +276,7 @@ export default function App() {
             onViewRubric={() => setRubricOpen(true)}
             onChangeInputs={scrollToSetup}
             onAnalyzeAgain={runAnalysis}
+            onResetWorkspace={resetWorkspace}
             rubricTriggerRef={rubricTriggerRef}
           />
 
