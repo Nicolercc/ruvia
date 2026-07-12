@@ -83,7 +83,10 @@ function makeFile(name: string, content = "resume text"): File {
 }
 
 async function renderApp() {
+  const user = userEvent.setup();
   const utils = render(<App />);
+  expect(screen.getByRole("heading", { name: /Evidence you can defend/i })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /Enter review workspace/i }));
   await waitFor(() => expect(fetchDemo).toHaveBeenCalled());
   return utils;
 }
@@ -131,6 +134,19 @@ describe("responseMatchesRequestedDemoCandidates", () => {
   it("passes when returned ids exactly match requested ids", () => {
     const response = analysisResponse([candidate("demo-candidate-maya-chen", "Maya Chen")]);
     expect(responseMatchesRequestedDemoCandidates(response, ["demo-candidate-maya-chen"])).toBe(true);
+  });
+});
+
+describe("landing page", () => {
+  it("presents the evidence-first thesis before entering the workspace", async () => {
+    render(<App />);
+    await waitFor(() => expect(fetchDemo).toHaveBeenCalled());
+
+    expect(screen.getByRole("heading", { name: /Evidence you can defend/i })).toBeInTheDocument();
+    expect(screen.getByText(/Human review required for every result/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Evidence docket example/i })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: /Intentionally excluded from scoring/i })).toBeInTheDocument();
+    expect(screen.getByText("School prestige")).toBeInTheDocument();
   });
 });
 
@@ -306,5 +322,41 @@ describe("analysis lifecycle integrity", () => {
 
     expect(screen.getByText("Demo fallback")).toBeInTheDocument();
     expect(screen.queryByRole("alert", { name: /Stale analysis/i })).not.toBeInTheDocument();
+  });
+
+  it("11. keeps long upload filenames and low scores inside their workspace containers", async () => {
+    const user = userEvent.setup();
+    const longFileName = "Nicole_Rodriguez_Exponent_YouTube_Channel_Manager_Portfolio_Resume_With_A_Very_Long_File_Name_For_Overflow_Testing.pdf";
+    vi.mocked(analyzeCandidates).mockResolvedValueOnce(
+      analysisResponse([
+        {
+          ...candidate("uploaded-long-doc", "Nicole Rodriguez With A Long Candidate Name"),
+          match_indicator: 10,
+          criterion_results: [
+            {
+              criterion_id: "sql",
+              status: "not_found",
+              evidence: null,
+              evidence_location: null
+            }
+          ]
+        }
+      ], "live_ai")
+    );
+    await renderApp();
+
+    await user.click(screen.getByRole("button", { name: /Load demo job/i }));
+    await user.click(screen.getByRole("button", { name: /Load demo candidates/i }));
+    await user.upload(screen.getByLabelText(/Upload PDF or DOCX resumes/i), makeFile(longFileName));
+    await user.click(screen.getByRole("button", { name: /Analyze candidates/i }));
+
+    const fileChip = screen.getByTitle(longFileName);
+    expect(fileChip).toHaveClass("file-chip");
+    expect(fileChip).toHaveTextContent(longFileName);
+
+    const detail = await screen.findByRole("region", { name: /Candidate evidence view/i });
+    const scoreContext = within(detail).getByRole("group", { name: /Score context/i });
+    expect(within(scoreContext).getByText("10")).toBeInTheDocument();
+    expect(within(scoreContext).getByText("of 100")).toBeInTheDocument();
   });
 });
