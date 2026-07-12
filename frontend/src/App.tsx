@@ -1,11 +1,15 @@
 import React from "react";
-import { AlertCircle, CheckCircle2, FileText, Loader2, Mail, ShieldCheck, Upload, Users } from "lucide-react";
+import { AlertCircle, ArrowRight, Ban, CheckCircle2, FileText, Loader2, ShieldCheck, Users } from "lucide-react";
 import { analyzeCandidates, draftInterview, fetchDemo } from "./api";
 import { loadStatuses, saveStatuses } from "./statusStore";
-import type { AnalyzeResponse, CandidateAnalysis, CandidateStatus, DemoResponse, DraftResponse, RoleRubric } from "./types";
+import type { AnalyzeResponse, CandidateAnalysis, CandidateStatus, DemoResponse, DraftResponse } from "./types";
+import { AnalysisContextBar } from "./components/AnalysisContextBar";
+import { CandidateDetail } from "./components/CandidateDetail";
+import { CandidateQueue } from "./components/CandidateQueue";
+import { FileUploadControl } from "./components/FileUploadControl";
+import { RubricDialog } from "./components/RubricDialog";
 import "./styles.css";
 
-const statuses: CandidateStatus[] = ["New", "Reviewing", "Interview", "Rejected"];
 const lastDemoRunKey = "ruvia:last-demo-run:v1";
 
 export type AnalysisLifecycle = "idle" | "ready" | "analyzing" | "success_live" | "success_demo" | "stale" | "error";
@@ -25,6 +29,7 @@ export function responseMatchesRequestedDemoCandidates(result: AnalyzeResponse, 
 }
 
 export default function App() {
+  const [workspaceOpen, setWorkspaceOpen] = React.useState(false);
   const [demo, setDemo] = React.useState<DemoResponse | null>(null);
   const [jobDescription, setJobDescription] = React.useState("");
   const [demoJobId, setDemoJobId] = React.useState<string | null>(null);
@@ -43,6 +48,11 @@ export default function App() {
   const [interviewDetails, setInterviewDetails] = React.useState("");
   const [lifecycle, setLifecycle] = React.useState<AnalysisLifecycle>("idle");
   const [analysisFingerprint, setAnalysisFingerprint] = React.useState<string | null>(null);
+  const [analyzedAt, setAnalyzedAt] = React.useState<Date | null>(null);
+  const [rubricOpen, setRubricOpen] = React.useState(false);
+
+  const setupRef = React.useRef<HTMLElement>(null);
+  const rubricTriggerRef = React.useRef<HTMLButtonElement>(null);
 
   const currentFingerprint = React.useMemo(
     () => computeInputFingerprint(jobDescription, demoCandidateIds, files),
@@ -103,6 +113,7 @@ export default function App() {
             setAnalysis(result);
             setSelectedId(result.candidates[0]?.candidate_id ?? null);
             setAnalysisFingerprint(fingerprint);
+            setAnalyzedAt(new Date());
             setLifecycle(result.mode === "demo_fallback" ? "success_demo" : "success_live");
           })
           .catch((err: Error) => {
@@ -157,11 +168,9 @@ export default function App() {
       const isLatest = token === runTokenRef.current;
       const inputsUnchanged = fingerprint === currentFingerprintRef.current;
       if (!isLatest) {
-        // A newer analysis request has since started; that request owns the result.
         return;
       }
       if (!inputsUnchanged) {
-        // Inputs changed after this request was sent but before a new one started.
         setLifecycle(analysisFingerprint ? "stale" : "ready");
         return;
       }
@@ -173,6 +182,7 @@ export default function App() {
       setAnalysis(result);
       setSelectedId(result.candidates[0]?.candidate_id ?? null);
       setAnalysisFingerprint(fingerprint);
+      setAnalyzedAt(new Date());
       setLifecycle(result.mode === "demo_fallback" ? "success_demo" : "success_live");
       if (demoJobId && demoCandidateIds.length > 0) {
         window.sessionStorage.setItem(lastDemoRunKey, JSON.stringify({ demoJobId, demoCandidateIds }));
@@ -212,27 +222,44 @@ export default function App() {
     }
   }
 
+  function scrollToSetup() {
+    setupRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const firstControl = setupRef.current?.querySelector<HTMLElement>("button, textarea, input");
+    firstControl?.focus();
+  }
+
+  if (!workspaceOpen) {
+    return <LandingPage onEnterWorkspace={() => setWorkspaceOpen(true)} />;
+  }
+
+  const isStale = lifecycle === "stale";
+  const showResults = Boolean(analysis);
+
   return (
     <main className="app-shell">
-      <header className="app-header">
-        <div>
-          <p className="eyebrow">Recruiter workspace</p>
-          <h1>Ruvia</h1>
-          <p className="subtitle">Evidence-first candidate review with human-controlled status and draft-only outreach.</p>
-        </div>
-        <div className={`mode-badge ${lifecycle === "stale" ? "demo" : analysis?.mode === "demo_fallback" ? "demo" : "live"}`}>
-          <ShieldCheck size={18} aria-hidden="true" />
-          {lifecycle === "stale" ? "Inputs changed" : analysis?.mode === "demo_fallback" ? "Demo fallback" : "Live AI ready"}
-        </div>
-      </header>
+      {!showResults ? (
+        <header className="app-header">
+          <div>
+            <p className="eyebrow">Recruiter workspace</p>
+            <h1>Ruvia</h1>
+            <p className="subtitle">Evidence-first candidate review with human-controlled status and draft-only outreach.</p>
+          </div>
+          <div className={`mode-badge ${lifecycle === "stale" ? "demo" : analysis?.mode === "demo_fallback" ? "demo" : "live"}`}>
+            <ShieldCheck size={18} aria-hidden="true" />
+            {lifecycle === "stale" ? "Inputs changed" : analysis?.mode === "demo_fallback" ? "Demo fallback" : "Live AI ready"}
+          </div>
+        </header>
+      ) : null}
 
-      <section className="setup-grid" aria-label="Review setup">
+      <section ref={setupRef} className="setup-grid" aria-label="Review setup">
         <div className="panel">
           <div className="panel-title">
             <FileText size={20} aria-hidden="true" />
             <h2>Job description</h2>
           </div>
-          <button type="button" className="secondary" onClick={loadDemoJob}>Load demo job</button>
+          <button type="button" className="secondary" onClick={loadDemoJob}>
+            Load demo job
+          </button>
           <label htmlFor="job-description">Role details</label>
           <textarea
             id="job-description"
@@ -247,72 +274,92 @@ export default function App() {
 
         <div className="panel">
           <div className="panel-title">
-            <Upload size={20} aria-hidden="true" />
+            <Users size={20} aria-hidden="true" />
             <h2>Candidates</h2>
           </div>
-          <button type="button" className="secondary" onClick={loadDemoCandidates}>Load demo candidates</button>
-          <label htmlFor="resumes">Upload PDF or DOCX resumes</label>
-          <input id="resumes" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple onChange={onFilesSelected} />
-          <SelectedFiles demo={demo} demoCandidateIds={demoCandidateIds} files={files} />
-          <button type="button" className="primary analyze-button" onClick={runAnalysis}>
-            {loading ? <Loader2 className="spin" size={18} aria-hidden="true" /> : <Users size={18} aria-hidden="true" />}
-            Analyze candidates
+          <button type="button" className="secondary" onClick={loadDemoCandidates}>
+            Load demo candidates
           </button>
-          {error ? <div className="alert" role="alert"><AlertCircle size={18} aria-hidden="true" />{error}</div> : null}
+          <FileUploadControl id="resumes" label="Upload PDF or DOCX resumes" onChange={onFilesSelected} />
+          <SelectedFiles demo={demo} demoCandidateIds={demoCandidateIds} files={files} />
+          <button type="button" className={`primary analyze-button ${isStale ? "analyze-stale" : ""}`} onClick={runAnalysis}>
+            {loading ? <Loader2 className="spin" size={18} aria-hidden="true" /> : <Users size={18} aria-hidden="true" />}
+            {isStale ? "Analyze current inputs" : "Analyze candidates"}
+          </button>
+          {error ? (
+            <div className="alert" role="alert">
+              <AlertCircle size={18} aria-hidden="true" />
+              {error}
+            </div>
+          ) : null}
         </div>
       </section>
 
-      {analysis ? (
-        <section className="results-grid" aria-label="Candidate review results">
-          {lifecycle === "stale" ? (
+      {showResults && analysis ? (
+        <section className={`results-workspace ${isStale ? "stale-workspace" : ""}`} aria-label="Candidate review results">
+          <AnalysisContextBar
+            analysis={analysis}
+            lifecycle={lifecycle}
+            candidateCount={analysis.candidates.length}
+            analyzedAt={analyzedAt}
+            loading={loading}
+            onViewRubric={() => setRubricOpen(true)}
+            onChangeInputs={scrollToSetup}
+            onAnalyzeAgain={runAnalysis}
+            rubricTriggerRef={rubricTriggerRef}
+          />
+
+          {isStale ? (
             <div className="alert stale-banner" role="alert" aria-label="Stale analysis">
               <AlertCircle size={18} aria-hidden="true" />
-              Inputs changed — analyze again. The results below are from a previous run and no longer match the current job description or candidates.
+              <div>
+                <strong>Inputs changed since this analysis</strong>
+                <p>
+                  The results below are from a previous run and no longer match the current job description or
+                  candidates. Analyze again before updating status or generating a draft.
+                </p>
+              </div>
             </div>
           ) : null}
-          <RubricPanel rubric={analysis.rubric} mode={analysis.mode} warnings={analysis.warnings} />
-          <section className="queue" aria-label="Review queue">
-            <h2>Review queue</h2>
-            <div className="candidate-list">
-              {analysis.candidates.map((candidate) => (
-                <button
-                  key={candidate.candidate_id}
-                  type="button"
-                  className={`candidate-card ${selectedCandidate?.candidate_id === candidate.candidate_id ? "selected" : ""}`}
-                  onClick={() => setSelectedId(candidate.candidate_id)}
-                >
-                  <span className="score">{candidate.match_indicator ?? "MR"}</span>
-                  <span>
-                    <strong>{candidate.name}</strong>
-                    <small>{candidate.recommendation.replace(/_/g, " ")}</small>
-                  </span>
-                  <span className={`confidence ${candidate.confidence}`}>{candidate.confidence}</span>
-                  <span className="status-chip">{statusMap[candidate.candidate_id] ?? "New"}</span>
-                </button>
-              ))}
-            </div>
-          </section>
 
-          {selectedCandidate ? (
-            <CandidateDetail
-              candidate={selectedCandidate}
-              rubric={analysis.rubric}
-              status={statusMap[selectedCandidate.candidate_id] ?? "New"}
-              onStatusChange={(status) => updateStatus(selectedCandidate.candidate_id, status)}
-              onGenerateDraft={() => generateDraft(selectedCandidate)}
-              stale={lifecycle === "stale"}
-              draftLoading={draftLoading}
-              draft={draft}
-              subject={subject}
-              body={body}
-              setSubject={setSubject}
-              setBody={setBody}
-              recruiterName={recruiterName}
-              setRecruiterName={setRecruiterName}
-              interviewDetails={interviewDetails}
-              setInterviewDetails={setInterviewDetails}
+          <div className="review-panes">
+            <CandidateQueue
+              candidates={analysis.candidates}
+              selectedId={selectedId}
+              statusMap={statusMap}
+              onSelect={setSelectedId}
             />
-          ) : null}
+
+            {selectedCandidate ? (
+              <CandidateDetail
+                candidate={selectedCandidate}
+                rubric={analysis.rubric}
+                status={statusMap[selectedCandidate.candidate_id] ?? "New"}
+                onStatusChange={(status) => updateStatus(selectedCandidate.candidate_id, status)}
+                onGenerateDraft={() => generateDraft(selectedCandidate)}
+                stale={isStale}
+                draftLoading={draftLoading}
+                draft={draft}
+                subject={subject}
+                body={body}
+                setSubject={setSubject}
+                setBody={setBody}
+                recruiterName={recruiterName}
+                setRecruiterName={setRecruiterName}
+                interviewDetails={interviewDetails}
+                setInterviewDetails={setInterviewDetails}
+              />
+            ) : null}
+          </div>
+
+          <RubricDialog
+            open={rubricOpen}
+            rubric={analysis.rubric}
+            mode={analysis.mode}
+            warnings={analysis.warnings}
+            onClose={() => setRubricOpen(false)}
+            triggerRef={rubricTriggerRef}
+          />
         </section>
       ) : (
         <section className="empty-state">
@@ -324,140 +371,124 @@ export default function App() {
   );
 }
 
+function LandingPage({ onEnterWorkspace }: { onEnterWorkspace: () => void }) {
+  return (
+    <main className="landing-shell">
+      <header className="landing-nav" aria-label="Landing navigation">
+        <span className="landing-brand">Ruvia</span>
+        <button type="button" className="nav-cta" onClick={onEnterWorkspace}>
+          Enter workspace
+          <ArrowRight size={16} aria-hidden="true" />
+        </button>
+      </header>
+
+      <section className="landing-hero" aria-label="Ruvia overview">
+        <div className="hero-copy">
+          <p className="landing-eyebrow">Evidence-first review</p>
+          <h1>Evidence you can defend.</h1>
+          <p className="hero-subhead">Human review over hidden automation.</p>
+          <p className="hero-lede">
+            Ruvia turns a job description and a small resume batch into an auditable review queue: what was found,
+            what is missing, what needs manual review, and what the system refused to score.
+          </p>
+          <div className="hero-action-group">
+            <button type="button" className="primary hero-cta" onClick={onEnterWorkspace}>
+              Enter review workspace
+              <ArrowRight size={18} aria-hidden="true" />
+            </button>
+            <div className="hero-proof">
+              <p className="review-notice">
+                <ShieldCheck size={18} aria-hidden="true" />
+                Human review required for every result
+              </p>
+              <ul className="hero-boundaries" aria-label="Product boundaries">
+                <li>Draft-only outreach</li>
+                <li>No auto-rejections</li>
+                <li>No protected-factor scoring</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="hero-artifact" role="region" aria-label="Evidence docket example">
+          <article className="evidence-docket">
+            <div className="docket-topline">
+              <span>Evidence docket</span>
+              <span>Run mode: demo fallback</span>
+            </div>
+            <div className="docket-section">
+              <span className="docket-label">Criterion</span>
+              <h2>SQL reporting workflows</h2>
+              <span className="status-token found">Found</span>
+              <blockquote>
+                Built SQL reporting workflows for pipeline, bookings, and renewals.
+              </blockquote>
+              <p className="provenance">Provenance: resume evidence</p>
+            </div>
+            <div className="score-rule" aria-label="Score mechanics">
+              <span>Score mechanics</span>
+              <strong>Required 70</strong>
+              <strong>Preferred 20</strong>
+              <strong>Completeness 10</strong>
+            </div>
+          </article>
+
+          <aside className="excluded-rail" aria-label="Intentionally excluded from scoring">
+            <div>
+              <Ban size={18} aria-hidden="true" />
+              <h2>Intentionally excluded</h2>
+            </div>
+            <ul>
+              <li>Age</li>
+              <li>Photos</li>
+              <li>School prestige</li>
+              <li>Employer prestige</li>
+              <li>Culture fit</li>
+              <li>Protected characteristics</li>
+            </ul>
+          </aside>
+        </div>
+      </section>
+
+      <section className="taxonomy-strip" aria-label="Evidence taxonomy">
+        <article>
+          <span className="taxonomy-label">Criterion state</span>
+          <span className="status-token found">Found</span>
+          <h2>SQL ownership</h2>
+          <p className="taxonomy-evidence">Resume evidence directly supports a role criterion.</p>
+        </article>
+        <article>
+          <span className="taxonomy-label">Criterion state</span>
+          <span className="status-token partial">Partial</span>
+          <h2>Tableau readiness</h2>
+          <p className="taxonomy-evidence">Transferable evidence exists; exact readiness needs review.</p>
+        </article>
+        <article>
+          <span className="taxonomy-label">Criterion state</span>
+          <span className="status-token not-found">Not found</span>
+          <h2>Python evidence</h2>
+          <p className="taxonomy-evidence">No resume evidence was found for this criterion.</p>
+        </article>
+      </section>
+    </main>
+  );
+}
+
 function SelectedFiles({ demo, demoCandidateIds, files }: { demo: DemoResponse | null; demoCandidateIds: string[]; files: File[] }) {
   const demoNames = demo?.candidates.filter((candidate) => demoCandidateIds.includes(candidate.candidate_id)) ?? [];
   return (
     <div className="selected-files" aria-live="polite">
-      {demoNames.map((candidate) => <span key={candidate.candidate_id}>{candidate.filename}</span>)}
-      {files.map((file) => <span key={file.name}>{file.name}</span>)}
-      {!demoNames.length && !files.length ? <span>No candidates selected</span> : null}
-    </div>
-  );
-}
-
-function RubricPanel({ rubric, mode, warnings }: { rubric: RoleRubric; mode: string; warnings: string[] }) {
-  return (
-    <section className="rubric" aria-label="Role rubric">
-      <div className="section-heading">
-        <h2>Role rubric</h2>
-        <span>{rubric.rubric_version}</span>
-      </div>
-      <p className="mode-line">{mode === "demo_fallback" ? "Demo fallback" : "Live AI"} run for {rubric.job_title}</p>
-      <RubricList title="Required" items={rubric.required.map((item) => item.criterion)} />
-      <RubricList title="Preferred" items={rubric.preferred.map((item) => item.criterion)} />
-      <RubricList title="Unclear" items={rubric.unclear} />
-      <RubricList title="Excluded" items={rubric.excluded_factors} />
-      {warnings.map((warning) => <p className="warning" key={warning}>{warning}</p>)}
-    </section>
-  );
-}
-
-function RubricList({ title, items }: { title: string; items: string[] }) {
-  return (
-    <div className="rubric-list">
-      <h3>{title}</h3>
-      <ul>
-        {items.length ? items.map((item) => <li key={item}>{item}</li>) : <li>None listed</li>}
-      </ul>
-    </div>
-  );
-}
-
-function CandidateDetail(props: {
-  candidate: CandidateAnalysis;
-  rubric: RoleRubric;
-  status: CandidateStatus;
-  onStatusChange: (status: CandidateStatus) => void;
-  onGenerateDraft: () => void;
-  stale: boolean;
-  draftLoading: boolean;
-  draft: DraftResponse | null;
-  subject: string;
-  body: string;
-  setSubject: (value: string) => void;
-  setBody: (value: string) => void;
-  recruiterName: string;
-  setRecruiterName: (value: string) => void;
-  interviewDetails: string;
-  setInterviewDetails: (value: string) => void;
-}) {
-  const { candidate, rubric } = props;
-  const criterionLabel = new Map([...rubric.required, ...rubric.preferred].map((item) => [item.id, item.criterion]));
-
-  return (
-    <section className="detail" aria-label="Candidate evidence view">
-      <div className="detail-header">
-        <div>
-          <h2>{candidate.name}</h2>
-          <p>{candidate.summary}</p>
-        </div>
-        <span className="big-score">{candidate.match_indicator ?? "MR"}</span>
-      </div>
-      <p className="human-review">Human review required for every result.</p>
-      <div className="detail-columns">
-        <InfoList title="Matches" items={candidate.matching_qualifications} />
-        <InfoList title="Gaps" items={candidate.missing_or_unverified} />
-        <InfoList title="Manual review" items={candidate.manual_review_flags} fallback="No flags" />
-      </div>
-      <h3>Criterion evidence</h3>
-      <div className="evidence-list">
-        {candidate.criterion_results.map((result) => (
-          <article key={result.criterion_id} className="evidence-row">
-            <span className={`status-dot ${result.status}`}>{result.status.replace("_", " ")}</span>
-            <div>
-              <strong>{criterionLabel.get(result.criterion_id) ?? result.criterion_id}</strong>
-              <p>{result.evidence || "No evidence found"}</p>
-            </div>
-          </article>
-        ))}
-      </div>
-      <div className="action-area">
-        <label htmlFor="status">Recruiter status</label>
-        <select
-          id="status"
-          value={props.status}
-          disabled={props.stale}
-          onChange={(event) => props.onStatusChange(event.target.value as CandidateStatus)}
-        >
-          {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
-        </select>
-        <p className="next-action">{candidate.next_best_action}</p>
-        <div className="draft-inputs">
-          <label htmlFor="recruiter">Recruiter name</label>
-          <input id="recruiter" value={props.recruiterName} onChange={(event) => props.setRecruiterName(event.target.value)} />
-          <label htmlFor="details">Interview details</label>
-          <textarea id="details" value={props.interviewDetails} onChange={(event) => props.setInterviewDetails(event.target.value)} rows={3} />
-        </div>
-        <button
-          type="button"
-          className="primary"
-          onClick={props.onGenerateDraft}
-          disabled={props.stale || props.draftLoading || props.status !== "Interview"}
-        >
-          {props.draftLoading ? <Loader2 className="spin" size={18} aria-hidden="true" /> : <Mail size={18} aria-hidden="true" />}
-          Generate interview draft
-        </button>
-        {props.draft ? (
-          <div className="draft-box">
-            <strong>{props.draft.notice}</strong>
-            <label htmlFor="subject">Subject</label>
-            <input id="subject" value={props.subject} onChange={(event) => props.setSubject(event.target.value)} />
-            <label htmlFor="body">Body</label>
-            <textarea id="body" value={props.body} onChange={(event) => props.setBody(event.target.value)} rows={9} />
-          </div>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-function InfoList({ title, items, fallback = "None listed" }: { title: string; items: string[]; fallback?: string }) {
-  return (
-    <div className="info-list">
-      <h3>{title}</h3>
-      <ul>
-        {items.length ? items.map((item) => <li key={item}>{item}</li>) : <li>{fallback}</li>}
-      </ul>
+      {demoNames.map((candidate) => (
+        <span className="file-chip" key={candidate.candidate_id} title={candidate.filename} tabIndex={0}>
+          {candidate.filename}
+        </span>
+      ))}
+      {files.map((file) => (
+        <span className="file-chip" key={file.name} title={file.name} tabIndex={0}>
+          {file.name}
+        </span>
+      ))}
+      {!demoNames.length && !files.length ? <span className="file-chip empty">No candidates selected</span> : null}
     </div>
   );
 }
