@@ -620,7 +620,7 @@ h3 {
   background: #eef3f0;
   border: 1px solid var(--rule-line);
   border-radius: 6px;
-  color: var(--scope-slate);
+  color: #5f6b65; /* --scope-slate is 4.40:1 on this tint; this keeps it above 4.5:1 */
   font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.68rem;
   font-weight: 600;
