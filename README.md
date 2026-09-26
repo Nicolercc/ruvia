@@ -10,6 +10,8 @@ Rather than asking an LLM to simply “rank candidates,” Ruvia separates AI-as
 
 **Stack:** React · TypeScript · Python · FastAPI · Pydantic · Anthropic Claude · Vitest · Pytest
 
+**Live demo:** [ruvia.vercel.app](https://ruvia.vercel.app) runs the seeded demo (no API key, clearly labelled *Demo fallback*). Uploaded resumes need a configured Anthropic key; without one the API returns a truthful error instead of results.
+
 ---
 
 ## Why I Built Ruvia

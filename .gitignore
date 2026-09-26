@@ -24,3 +24,5 @@ uploads/
 AGENTS.md
 CLAUDE.local.md
 prompts/
+.vercel
+.env*.local
