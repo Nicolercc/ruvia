@@ -79,3 +79,13 @@ def test_reject_password_protected_pdf() -> None:
         parser.parse("locked.pdf", "application/pdf", make_encrypted_pdf())
 
     assert exc.value.error_code == "password_protected_pdf"
+
+
+def test_docx_that_expands_past_the_limit_is_rejected(monkeypatch) -> None:
+    # A real DOCX, with the uncompressed limit lowered below its expanded size,
+    # stands in for a zip bomb without writing gigabytes in a test.
+    content = make_docx("Built SQL dashboards and presented insights to Finance.")
+    monkeypatch.setattr("app.parser.MAX_DOCX_UNCOMPRESSED_BYTES", 1024)
+    with pytest.raises(RuviaError) as error:
+        DocumentParser().parse("bomb.docx", None, content)
+    assert error.value.error_code == "file_too_large"

@@ -266,3 +266,13 @@ def test_live_analysis_downgrades_evidence_not_found_in_the_resume(monkeypatch) 
     assert candidate["criterion_results"][0]["status"] == "not_found"
     assert "ungrounded_evidence:req-1" in candidate["manual_review_flags"]
     assert candidate["match_indicator"] == 10  # only the evidence-completeness term remains
+
+
+def test_overlong_job_description_is_rejected_before_any_model_call() -> None:
+    response = client.post(
+        "/api/analyze",
+        data={"job_description": DEMO_JOB_DESCRIPTION + "x" * 20_000, "demo_job_id": DEMO_JOB_ID,
+              "demo_candidate_ids": '["demo-candidate-maya-chen"]'},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["error_code"] == "job_description_too_long"

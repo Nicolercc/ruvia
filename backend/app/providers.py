@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from anthropic import Anthropic
 from pydantic import ValidationError
 
-from .config import anthropic_model, live_ai_configured
+from .config import ANTHROPIC_TIMEOUT_SECONDS, anthropic_model, live_ai_configured
 from .errors import RuviaError
 from .fixtures import DEMO_CANDIDATES, DEMO_JOB_ID, seeded_provider_response
 from .parser import ParsedDocument
@@ -43,7 +43,7 @@ class AnthropicAnalysisProvider(AnalysisProvider):
                 status_code=503,
             )
 
-        client = Anthropic()
+        client = Anthropic(timeout=ANTHROPIC_TIMEOUT_SECONDS, max_retries=0)
         prompt = self._build_prompt(job_description, documents)
         try:
             message = client.messages.create(
