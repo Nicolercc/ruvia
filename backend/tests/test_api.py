@@ -235,3 +235,34 @@ def test_draft_interview_does_not_invent_logistics() -> None:
     assert payload["draft_only"] is True
     assert "has not been sent" in payload["body"]
     assert "Please reply with a few times" in payload["body"]
+
+
+def test_live_analysis_downgrades_evidence_not_found_in_the_resume(monkeypatch) -> None:
+    class _FakeProvider:
+        def analyze(self, job_description, documents):
+            candidate = _fake_candidate(documents[0].document_id, "Real Candidate")
+            candidate.criterion_results = [
+                CriterionResult(
+                    criterion_id="req-1",
+                    status=CriterionStatus.met,
+                    evidence="Ten years leading SQL platform teams at a Fortune 500 bank.",
+                    evidence_location="resume",
+                )
+            ]
+            return ProviderAnalysisResponse(rubric=_fake_rubric(), candidates=[candidate], warnings=[])
+
+    monkeypatch.setattr("app.main.AnthropicAnalysisProvider", lambda: _FakeProvider())
+    file_bytes = make_docx_bytes("Built SQL dashboards and presented insights to Finance.")
+
+    response = client.post(
+        "/api/analyze",
+        data={"job_description": DEMO_JOB_DESCRIPTION},
+        files={"files": ("candidate.docx", file_bytes,
+                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+    )
+
+    assert response.status_code == 200
+    candidate = response.json()["candidates"][0]
+    assert candidate["criterion_results"][0]["status"] == "not_found"
+    assert "ungrounded_evidence:req-1" in candidate["manual_review_flags"]
+    assert candidate["match_indicator"] == 10  # only the evidence-completeness term remains

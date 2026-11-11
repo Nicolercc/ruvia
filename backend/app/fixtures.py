@@ -150,9 +150,9 @@ def seeded_provider_response(candidate_ids: list[str]) -> ProviderAnalysisRespon
             recommendation=Recommendation.potential_match_verify_gaps,
             summary="Relevant BI and SQL evidence with a transferable dashboard background, but Tableau and Python are not found and SQL tenure is conflicting.",
             criterion_results=[
-                CriterionResult(criterion_id="req-sql-reporting", status=CriterionStatus.conflicting, evidence="Summary says five years of SQL experience, but role history shows SQL work beginning in late 2024.", evidence_location="resume"),
+                CriterionResult(criterion_id="req-sql-reporting", status=CriterionStatus.conflicting, evidence="Resume summary says five years of SQL experience; role history shows SQL work beginning in late 2024.", evidence_location="resume"),
                 CriterionResult(criterion_id="req-dashboards", status=CriterionStatus.partial, evidence="Delivered Power BI dashboards for sales managers and finance partners.", evidence_location="resume"),
-                CriterionResult(criterion_id="req-stakeholders", status=CriterionStatus.met, evidence="Partnered with RevOps and finance partners on revenue reporting.", evidence_location="resume"),
+                CriterionResult(criterion_id="req-stakeholders", status=CriterionStatus.met, evidence="Delivered Power BI dashboards for sales managers and finance partners", evidence_location="resume"),
                 CriterionResult(criterion_id="req-data-quality", status=CriterionStatus.partial, evidence="Partnered with RevOps to define sales cycle metrics.", evidence_location="resume"),
                 CriterionResult(criterion_id="pref-python", status=CriterionStatus.not_found),
                 CriterionResult(criterion_id="pref-tableau", status=CriterionStatus.not_found),
@@ -172,7 +172,7 @@ def seeded_provider_response(candidate_ids: list[str]) -> ProviderAnalysisRespon
             criterion_results=[
                 CriterionResult(criterion_id="req-sql-reporting", status=CriterionStatus.not_found),
                 CriterionResult(criterion_id="req-dashboards", status=CriterionStatus.partial, evidence="Created monthly spreadsheet summaries for a support team.", evidence_location="resume"),
-                CriterionResult(criterion_id="req-stakeholders", status=CriterionStatus.partial, evidence="Skills list includes stakeholder updates.", evidence_location="resume"),
+                CriterionResult(criterion_id="req-stakeholders", status=CriterionStatus.partial, evidence="Skills: spreadsheets, CRM reports, stakeholder updates.", evidence_location="resume"),
                 CriterionResult(criterion_id="req-data-quality", status=CriterionStatus.not_found),
                 CriterionResult(criterion_id="pref-python", status=CriterionStatus.not_found),
                 CriterionResult(criterion_id="pref-tableau", status=CriterionStatus.not_found),

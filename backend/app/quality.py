@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
-from .schemas import CandidateAnalysisBase, CriterionStatus, QualityGateResult
+from .schemas import CandidateAnalysisBase, CriterionResult, CriterionStatus, QualityGateResult
+
+MATERIAL_STATUSES = {CriterionStatus.met, CriterionStatus.partial, CriterionStatus.conflicting}
+UNGROUNDED_EVIDENCE_TEXT = "No verbatim evidence found in resume"
+_QUOTE_TRANSLATION = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2013": "-", "\u2014": "-"})
+_FRAGMENT_SPLIT = re.compile(r"\s*(?:\.\.\.|\u2026)\s*")
+_FRAGMENT_TRIM = " .;,:\"'"
+MIN_FRAGMENT_CHARS = 8
 
 
 PROMPT_INJECTION_PATTERNS = [
@@ -33,6 +41,59 @@ def detect_prompt_injection(text: str) -> bool:
 def detect_protected_information(text: str) -> bool:
     lowered = text.lower()
     return any(re.search(pattern, lowered) for pattern in PROTECTED_FACTOR_PATTERNS)
+
+
+def _normalize_for_match(text: str) -> str:
+    text = unicodedata.normalize("NFKC", text).translate(_QUOTE_TRANSLATION).lower()
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def evidence_is_grounded(evidence: str | None, resume_text: str) -> bool:
+    """True when the evidence is a verbatim quote from the resume.
+
+    Matching ignores case, whitespace, curly-vs-straight quotes and dashes,
+    and surrounding punctuation. An ellipsis may join several quoted
+    fragments; each fragment must appear in the resume on its own.
+    """
+    if not evidence:
+        return False
+    haystack = _normalize_for_match(resume_text)
+    fragments = [f.strip(_FRAGMENT_TRIM) for f in _FRAGMENT_SPLIT.split(_normalize_for_match(evidence))]
+    fragments = [f for f in fragments if f]
+    return bool(fragments) and all(
+        len(fragment) >= MIN_FRAGMENT_CHARS and fragment in haystack for fragment in fragments
+    )
+
+
+def ground_criterion_results(
+    candidate: CandidateAnalysisBase, resume_text: str
+) -> tuple[CandidateAnalysisBase, list[str]]:
+    """Downgrade every met/partial/conflicting result whose evidence is not a
+    verbatim quote from the candidate's resume.
+
+    The model is asked to quote, but a paraphrase or an invented line would
+    otherwise be shown as resume evidence and counted toward the score. An
+    ungrounded result becomes not_found (it scores 0) and is flagged for
+    human review, so a reviewer sees exactly which claim could not be traced.
+    """
+    if not resume_text:
+        return candidate, []
+    flags: list[str] = []
+    results: list[CriterionResult] = []
+    for result in candidate.criterion_results:
+        if result.status in MATERIAL_STATUSES and not evidence_is_grounded(result.evidence, resume_text):
+            flags.append(f"ungrounded_evidence:{result.criterion_id}")
+            results.append(CriterionResult(
+                criterion_id=result.criterion_id,
+                status=CriterionStatus.not_found,
+                evidence=UNGROUNDED_EVIDENCE_TEXT,
+                evidence_location="resume",
+            ))
+        else:
+            results.append(result)
+    if not flags:
+        return candidate, []
+    return candidate.model_copy(update={"criterion_results": results}), flags
 
 
 def quality_gate_analysis(candidate: CandidateAnalysisBase, resume_text: str = "") -> QualityGateResult:
