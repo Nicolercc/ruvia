@@ -57,7 +57,9 @@ def get_demo():
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(
-    job_description: Annotated[str, Form()],
+    # Defaulted so an empty field reaches the handler and gets the specific
+    # job_description_too_short error instead of a generic 422.
+    job_description: Annotated[str, Form()] = "",
     demo_job_id: Annotated[Optional[str], Form()] = None,
     demo_candidate_ids: Annotated[Optional[str], Form()] = None,
     files: Annotated[Optional[List[UploadFile]], File()] = None,
