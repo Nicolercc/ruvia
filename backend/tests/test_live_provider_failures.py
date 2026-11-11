@@ -38,7 +38,7 @@ def _doc() -> ParsedDocument:
 
 def test_anthropic_request_failure_returns_safe_error(monkeypatch) -> None:
     monkeypatch.setattr("app.providers.live_ai_configured", lambda: True)
-    monkeypatch.setattr("app.providers.Anthropic", lambda: _FakeAnthropic(_FailingMessages()))
+    monkeypatch.setattr("app.providers.Anthropic", lambda **kwargs: _FakeAnthropic(_FailingMessages()))
 
     with pytest.raises(RuviaError) as exc:
         AnthropicAnalysisProvider().analyze("A long enough job description requiring SQL dashboards.", [_doc()])
@@ -49,10 +49,26 @@ def test_anthropic_request_failure_returns_safe_error(monkeypatch) -> None:
 
 def test_invalid_model_json_returns_safe_error(monkeypatch) -> None:
     monkeypatch.setattr("app.providers.live_ai_configured", lambda: True)
-    monkeypatch.setattr("app.providers.Anthropic", lambda: _FakeAnthropic(_InvalidMessages()))
+    monkeypatch.setattr("app.providers.Anthropic", lambda **kwargs: _FakeAnthropic(_InvalidMessages()))
 
     with pytest.raises(RuviaError) as exc:
         AnthropicAnalysisProvider().analyze("A long enough job description requiring SQL dashboards.", [_doc()])
 
     assert exc.value.error_code == "model_output_invalid"
     assert exc.value.status_code == 502
+
+
+def test_model_call_is_bounded_below_the_vercel_function_limit(monkeypatch) -> None:
+    seen: dict = {}
+
+    def _capture(**kwargs):
+        seen.update(kwargs)
+        return _FakeAnthropic(_FailingMessages())
+
+    monkeypatch.setattr("app.providers.live_ai_configured", lambda: True)
+    monkeypatch.setattr("app.providers.Anthropic", _capture)
+    with pytest.raises(RuviaError):
+        AnthropicAnalysisProvider().analyze("Senior analyst role " * 10, [_doc()])
+    # vercel.json maxDuration is 60 s; one attempt must finish well inside it.
+    assert seen["timeout"] < 60
+    assert seen["max_retries"] == 0

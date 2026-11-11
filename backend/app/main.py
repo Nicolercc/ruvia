@@ -9,7 +9,13 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
-from .config import MAX_CANDIDATES, MIN_JOB_DESCRIPTION_CHARS, anthropic_model, live_ai_configured
+from .config import (
+    MAX_CANDIDATES,
+    MAX_JOB_DESCRIPTION_CHARS,
+    MIN_JOB_DESCRIPTION_CHARS,
+    anthropic_model,
+    live_ai_configured,
+)
 from .drafts import draft_interview_invitation
 from .errors import RuviaError
 from .fixtures import DEMO_CANDIDATES, demo_response
@@ -78,6 +84,8 @@ async def analyze(
             raise RuviaError("mixed_candidate_sources", "Use either uploaded resumes or demo candidates, not both.")
         if len(job_description.strip()) < MIN_JOB_DESCRIPTION_CHARS:
             raise RuviaError("job_description_too_short", "Paste a fuller job description before analysis.")
+        if len(job_description) > MAX_JOB_DESCRIPTION_CHARS:
+            raise RuviaError("job_description_too_long", "Shorten the job description to 20,000 characters or fewer.")
         if not uploads and not candidate_ids:
             raise RuviaError("no_candidates", "Add at least one resume or load bundled demo candidates.")
 
