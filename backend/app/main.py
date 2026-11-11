@@ -9,14 +9,20 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
 
-from .config import MAX_CANDIDATES, MIN_JOB_DESCRIPTION_CHARS, anthropic_model, live_ai_configured
+from .config import (
+    MAX_CANDIDATES,
+    MAX_JOB_DESCRIPTION_CHARS,
+    MIN_JOB_DESCRIPTION_CHARS,
+    anthropic_model,
+    live_ai_configured,
+)
 from .drafts import draft_interview_invitation
 from .errors import RuviaError
-from .fixtures import demo_response
+from .fixtures import DEMO_CANDIDATES, demo_response
 from .logging_utils import audit_event
 from .parser import DocumentParser, ParsedDocument
 from .providers import AnthropicAnalysisProvider, DemoFallbackProvider
-from .quality import quality_gate_analysis
+from .quality import ground_criterion_results, quality_gate_analysis
 from .schemas import (
     AnalyzeResponse,
     CandidateAnalysis,
@@ -57,7 +63,9 @@ def get_demo():
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(
-    job_description: Annotated[str, Form()],
+    # Defaulted so an empty field reaches the handler and gets the specific
+    # job_description_too_short error instead of a generic 422.
+    job_description: Annotated[str, Form()] = "",
     demo_job_id: Annotated[Optional[str], Form()] = None,
     demo_candidate_ids: Annotated[Optional[str], Form()] = None,
     files: Annotated[Optional[List[UploadFile]], File()] = None,
@@ -76,6 +84,8 @@ async def analyze(
             raise RuviaError("mixed_candidate_sources", "Use either uploaded resumes or demo candidates, not both.")
         if len(job_description.strip()) < MIN_JOB_DESCRIPTION_CHARS:
             raise RuviaError("job_description_too_short", "Paste a fuller job description before analysis.")
+        if len(job_description) > MAX_JOB_DESCRIPTION_CHARS:
+            raise RuviaError("job_description_too_long", "Shorten the job description to 20,000 characters or fewer.")
         if not uploads and not candidate_ids:
             raise RuviaError("no_candidates", "Add at least one resume or load bundled demo candidates.")
 
@@ -89,7 +99,9 @@ async def analyze(
             provider_response = DemoFallbackProvider().analyze_fixture_ids(demo_job_id, candidate_ids)
             mode = Mode.demo_fallback
             fallback_used = True
-            resume_text_by_id = {}
+            resume_text_by_id = {
+                candidate_id: DEMO_CANDIDATES[candidate_id]["resume_text"] for candidate_id in candidate_ids
+            }
         else:
             provider_response = AnthropicAnalysisProvider().analyze(job_description, parsed_documents)
             mode = Mode.live_ai
@@ -112,14 +124,16 @@ async def analyze(
         candidates: list[CandidateAnalysis] = []
         warnings = list(provider_response.warnings)
         for candidate in provider_response.candidates:
-            gate = quality_gate_analysis(candidate, resume_text_by_id.get(candidate.candidate_id, ""))
+            resume_text = resume_text_by_id.get(candidate.candidate_id, "")
+            candidate, grounding_flags = ground_criterion_results(candidate, resume_text)
+            gate = quality_gate_analysis(candidate, resume_text)
             if not gate.passed:
                 raise RuviaError(
                     "quality_gate_failed",
                     "Analysis failed the grounding and safety quality gate. No partial result was returned.",
                     status_code=502,
                 )
-            manual_flags = sorted(set(candidate.manual_review_flags + gate.flags))
+            manual_flags = sorted(set(candidate.manual_review_flags + gate.flags + grounding_flags))
             indicator, explanation = compute_match_indicator(
                 provider_response.rubric, candidate.criterion_results
             )

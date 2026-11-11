@@ -10,7 +10,7 @@ from docx import Document
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from .config import MAX_EXTRACTED_CHARS, MAX_FILE_BYTES, MAX_PDF_PAGES
+from .config import MAX_DOCX_UNCOMPRESSED_BYTES, MAX_EXTRACTED_CHARS, MAX_FILE_BYTES, MAX_PDF_PAGES
 from .errors import RuviaError
 
 
@@ -70,6 +70,8 @@ class DocumentParser:
             with ZipFile(BytesIO(content)) as archive:
                 if "[Content_Types].xml" not in archive.namelist():
                     raise RuviaError("disguised_file", f"{filename} does not appear to be a valid DOCX.")
+                if sum(info.file_size for info in archive.infolist()) > MAX_DOCX_UNCOMPRESSED_BYTES:
+                    raise RuviaError("file_too_large", f"{filename} expands beyond the 25 MB limit.")
             document = Document(BytesIO(content))
         except RuviaError:
             raise
