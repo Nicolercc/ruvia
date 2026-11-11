@@ -12,11 +12,11 @@ from pydantic import ValidationError
 from .config import MAX_CANDIDATES, MIN_JOB_DESCRIPTION_CHARS, anthropic_model, live_ai_configured
 from .drafts import draft_interview_invitation
 from .errors import RuviaError
-from .fixtures import demo_response
+from .fixtures import DEMO_CANDIDATES, demo_response
 from .logging_utils import audit_event
 from .parser import DocumentParser, ParsedDocument
 from .providers import AnthropicAnalysisProvider, DemoFallbackProvider
-from .quality import quality_gate_analysis
+from .quality import ground_criterion_results, quality_gate_analysis
 from .schemas import (
     AnalyzeResponse,
     CandidateAnalysis,
@@ -89,7 +89,9 @@ async def analyze(
             provider_response = DemoFallbackProvider().analyze_fixture_ids(demo_job_id, candidate_ids)
             mode = Mode.demo_fallback
             fallback_used = True
-            resume_text_by_id = {}
+            resume_text_by_id = {
+                candidate_id: DEMO_CANDIDATES[candidate_id]["resume_text"] for candidate_id in candidate_ids
+            }
         else:
             provider_response = AnthropicAnalysisProvider().analyze(job_description, parsed_documents)
             mode = Mode.live_ai
@@ -112,14 +114,16 @@ async def analyze(
         candidates: list[CandidateAnalysis] = []
         warnings = list(provider_response.warnings)
         for candidate in provider_response.candidates:
-            gate = quality_gate_analysis(candidate, resume_text_by_id.get(candidate.candidate_id, ""))
+            resume_text = resume_text_by_id.get(candidate.candidate_id, "")
+            candidate, grounding_flags = ground_criterion_results(candidate, resume_text)
+            gate = quality_gate_analysis(candidate, resume_text)
             if not gate.passed:
                 raise RuviaError(
                     "quality_gate_failed",
                     "Analysis failed the grounding and safety quality gate. No partial result was returned.",
                     status_code=502,
                 )
-            manual_flags = sorted(set(candidate.manual_review_flags + gate.flags))
+            manual_flags = sorted(set(candidate.manual_review_flags + gate.flags + grounding_flags))
             indicator, explanation = compute_match_indicator(
                 provider_response.rubric, candidate.criterion_results
             )
