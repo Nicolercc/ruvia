@@ -1,4 +1,10 @@
 export type Mode = "live_ai" | "demo_fallback";
+
+export interface HealthResponse {
+  status: "ok";
+  live_ai_configured: boolean;
+  model: string;
+}
 export type Recommendation =
   | "recruiter_review_recommended"
   | "potential_match_verify_gaps"

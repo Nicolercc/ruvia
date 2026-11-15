@@ -6,11 +6,12 @@ import type { AnalyzeResponse, DemoResponse, CandidateAnalysis } from "./types";
 
 vi.mock("./api", () => ({
   fetchDemo: vi.fn(),
+  fetchHealth: vi.fn(),
   analyzeCandidates: vi.fn(),
   draftInterview: vi.fn()
 }));
 
-import { fetchDemo, analyzeCandidates } from "./api";
+import { fetchDemo, fetchHealth, analyzeCandidates } from "./api";
 
 const demoFixture: DemoResponse = {
   demo_job_id: "demo-role-revenue-ops-analyst",
@@ -95,6 +96,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   vi.mocked(fetchDemo).mockResolvedValue(demoFixture);
+  vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", live_ai_configured: false, model: "test-model" });
 });
 
 afterEach(() => {
@@ -134,6 +136,27 @@ describe("responseMatchesRequestedDemoCandidates", () => {
   it("passes when returned ids exactly match requested ids", () => {
     const response = analysisResponse([candidate("demo-candidate-maya-chen", "Maya Chen")]);
     expect(responseMatchesRequestedDemoCandidates(response, ["demo-candidate-maya-chen"])).toBe(true);
+  });
+});
+
+describe("workspace mode badge", () => {
+  it("does not claim live AI when the API has no key configured", async () => {
+    await renderApp();
+    expect(await screen.findByText("Seeded demo only")).toBeInTheDocument();
+    expect(screen.queryByText("Live AI ready")).not.toBeInTheDocument();
+  });
+
+  it("says live AI is ready only when the API confirms a key", async () => {
+    vi.mocked(fetchHealth).mockResolvedValue({ status: "ok", live_ai_configured: true, model: "test-model" });
+    await renderApp();
+    expect(await screen.findByText("Live AI ready")).toBeInTheDocument();
+  });
+
+  it("makes no live AI claim when the health check fails", async () => {
+    vi.mocked(fetchHealth).mockRejectedValue(new Error("network down"));
+    await renderApp();
+    expect(await screen.findByText("Live AI unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Live AI ready")).not.toBeInTheDocument();
   });
 });
 
