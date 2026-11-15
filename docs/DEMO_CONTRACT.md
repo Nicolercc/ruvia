@@ -23,7 +23,7 @@ Show that a recruiter can load one job and three synthetic candidates, run an ev
 
 The app may remain a single recruiter workspace. It should visibly contain:
 
-1. **Header:** Ruvia name, one-sentence value proposition, and Live AI/Demo Fallback badge.
+1. **Header:** Ruvia name, one-sentence value proposition, and a mode badge driven by `/api/health`: "Live AI ready" only when a model key is configured, otherwise "Seeded demo only" (or "Live AI unavailable" if the check fails).
 2. **Review setup:** job-description input, demo-job loader, resume picker, demo-candidate loader, selected-file list, and Analyze action.
 3. **Role rubric:** required, preferred, unclear, and excluded criteria with one shared rubric version.
 4. **Review queue:** three ordered candidate summaries with indicator, recommendation, confidence, status, and manual-review signal.

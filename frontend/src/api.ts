@@ -1,6 +1,14 @@
-import type { AnalyzeResponse, DemoResponse, DraftResponse } from "./types";
+import type { AnalyzeResponse, DemoResponse, DraftResponse, HealthResponse } from "./types";
 
 const API_BASE = "";
+
+export async function fetchHealth(): Promise<HealthResponse> {
+  const response = await fetch(`${API_BASE}/api/health`);
+  if (!response.ok) {
+    throw await apiError(response);
+  }
+  return response.json();
+}
 
 export async function fetchDemo(): Promise<DemoResponse> {
   const response = await fetch(`${API_BASE}/api/demo`);

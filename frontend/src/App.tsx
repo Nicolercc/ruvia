@@ -1,6 +1,6 @@
 import React from "react";
 import { AlertCircle, ArrowRight, Ban, CheckCircle2, FileText, Loader2, ShieldCheck, Users } from "lucide-react";
-import { analyzeCandidates, draftInterview, fetchDemo } from "./api";
+import { analyzeCandidates, draftInterview, fetchDemo, fetchHealth } from "./api";
 import { loadStatuses, saveStatuses } from "./statusStore";
 import type { AnalyzeResponse, CandidateAnalysis, CandidateStatus, DemoResponse, DraftResponse } from "./types";
 import { AnalysisContextBar } from "./components/AnalysisContextBar";
@@ -26,6 +26,17 @@ export function responseMatchesRequestedDemoCandidates(result: AnalyzeResponse, 
   return returned.length === requested.size && returned.every((id) => requested.has(id));
 }
 
+
+const MODE_BADGE = {
+  checking: { label: "Checking AI mode", title: "Asking the API whether live AI is configured." },
+  ready: { label: "Live AI ready", title: "The API has a model key configured, so uploaded resumes can be analyzed." },
+  off: {
+    label: "Seeded demo only",
+    title: "No model key is configured on this deployment. Bundled demo candidates use labelled seeded results; uploads are refused."
+  },
+  unavailable: { label: "Live AI unavailable", title: "The API health check failed, so Ruvia makes no live AI claim." }
+} as const;
+
 export default function App() {
   const [workspaceOpen, setWorkspaceOpen] = React.useState(false);
   const [demo, setDemo] = React.useState<DemoResponse | null>(null);
@@ -45,6 +56,8 @@ export default function App() {
   const [recruiterName, setRecruiterName] = React.useState("");
   const [interviewDetails, setInterviewDetails] = React.useState("");
   const [lifecycle, setLifecycle] = React.useState<AnalysisLifecycle>("idle");
+  // The header only claims live AI once /api/health confirms a model key is configured.
+  const [liveAi, setLiveAi] = React.useState<"checking" | "ready" | "off" | "unavailable">("checking");
   const [analysisFingerprint, setAnalysisFingerprint] = React.useState<string | null>(null);
   const [analyzedAt, setAnalyzedAt] = React.useState<Date | null>(null);
   const [rubricOpen, setRubricOpen] = React.useState(false);
@@ -71,6 +84,12 @@ export default function App() {
       return current;
     });
   }, [currentFingerprint, analysisFingerprint]);
+
+  React.useEffect(() => {
+    fetchHealth()
+      .then((health) => setLiveAi(health.live_ai_configured ? "ready" : "off"))
+      .catch(() => setLiveAi("unavailable"));
+  }, []);
 
   React.useEffect(() => {
     fetchDemo()
@@ -213,9 +232,12 @@ export default function App() {
             <h1>Ruvia</h1>
             <p className="subtitle">Evidence-first candidate review with human-controlled status and draft-only outreach.</p>
           </div>
-          <div className={`mode-badge ${lifecycle === "stale" ? "demo" : analysis?.mode === "demo_fallback" ? "demo" : "live"}`}>
+          <div
+            className={`mode-badge ${liveAi === "ready" ? "live" : "demo"}`}
+            title={MODE_BADGE[liveAi].title}
+          >
             <ShieldCheck size={18} aria-hidden="true" />
-            {lifecycle === "stale" ? "Inputs changed" : analysis?.mode === "demo_fallback" ? "Demo fallback" : "Live AI ready"}
+            {MODE_BADGE[liveAi].label}
           </div>
         </header>
       ) : null}
